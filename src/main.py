@@ -18,7 +18,7 @@ def get_peak_vram_mb():
     return 0
 
 
-def create_massive_rag_context(repetitions=30):
+def create_massive_rag_context(repetitions=12):
     base = """
 Capítulo médico recuperado pelo RAG:
 O paciente apresenta sintomas compatíveis com cefaleia pulsátil,
