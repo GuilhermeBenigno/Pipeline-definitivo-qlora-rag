@@ -18,7 +18,7 @@ def get_peak_vram_mb():
     return 0
 
 
-def create_massive_rag_context(repetitions=600):
+def create_massive_rag_context(repetitions=900):
     base = """
 Capítulo médico recuperado pelo RAG:
 O paciente apresenta sintomas compatíveis com cefaleia pulsátil,
@@ -38,29 +38,52 @@ def load_model(use_flash_attention=False):
         bnb_4bit_quant_type="nf4"
     )
 
-    kwargs = {
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    base_kwargs = {
         "quantization_config": bnb_config,
         "device_map": "auto",
         "torch_dtype": torch.float16
     }
 
     if use_flash_attention:
-        kwargs["attn_implementation"] = "flash_attention_2"
+        try:
+            print("Tentando carregar com FlashAttention-2...")
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_NAME,
+                attn_implementation="flash_attention_2",
+                **base_kwargs
+            )
+            print("Modelo carregado com FlashAttention-2.")
+            return model, tokenizer
 
-    try:
-        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, **kwargs)
-        print("Modelo carregado com FlashAttention-2." if use_flash_attention else "Modelo carregado sem FlashAttention.")
-    except Exception as e:
-        print("FlashAttention-2 não disponível. Carregando com atenção padrão.")
-        print("Motivo:", e)
-        kwargs.pop("attn_implementation", None)
-        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, **kwargs)
+        except Exception as e:
+            print("FlashAttention-2 não disponível neste ambiente.")
+            print("Motivo:", e)
+            print("Usando fallback: SDPA do PyTorch.")
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    MODEL_NAME,
+                    attn_implementation="sdpa",
+                    **base_kwargs
+                )
+                print("Modelo carregado com SDPA.")
+                return model, tokenizer
 
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+            except Exception as e2:
+                print("SDPA também falhou. Usando atenção padrão.")
+                print("Motivo:", e2)
 
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        **base_kwargs
+    )
+
+    print("Modelo carregado com atenção padrão.")
     return model, tokenizer
 
 
